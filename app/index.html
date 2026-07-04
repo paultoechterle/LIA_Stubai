@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <title>Gletscherrückgang Stubai – 3D</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css"
+        rel="stylesheet">
+  <style>
+    html, body { margin: 0; height: 100%; }
+    #map { position: absolute; inset: 0; }
+    #panel {
+      position: absolute; top: 12px; left: 12px; z-index: 1;
+      max-width: 260px; padding: 12px 14px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 8px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+      font-family: system-ui, sans-serif; color: #1a1a1a;
+    }
+    #panel h1 { margin: 0 0 4px; font-size: 16px; }
+    #panel p { margin: 4px 0 0; font-size: 12px; line-height: 1.4; }
+    #toggle {
+      display: flex; margin-top: 10px; border: 1px solid #bbb;
+      border-radius: 6px; overflow: hidden;
+    }
+    #toggle button {
+      flex: 1; padding: 6px 0; font-size: 13px; border: 0;
+      background: #f4f4f4; color: #1a1a1a; cursor: pointer;
+    }
+    #toggle button.active { background: #2c6fb3; color: #fff; }
+    #note {
+      margin-top: 8px; font-size: 11px; line-height: 1.4;
+      color: #8a4b00; display: none;
+    }
+    #note.visible { display: block; }
+    #export {
+      margin-top: 8px; width: 100%; padding: 7px 0; font-size: 13px;
+      border: 1px solid #bbb; border-radius: 6px; background: #f4f4f4;
+      color: #1a1a1a; cursor: pointer;
+    }
+    #export:hover { background: #e9e9e9; }
+    #draw-tools {
+      display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;
+    }
+    #draw-tools button {
+      flex: 1 1 46%; padding: 6px 0; font-size: 12px;
+      border: 1px solid #bbb; border-radius: 6px;
+      background: #f4f4f4; color: #1a1a1a; cursor: pointer;
+    }
+    #draw-tools button.active {
+      background: #2c6fb3; color: #fff; border-color: #2c6fb3;
+    }
+    #draw-hint {
+      margin-top: 6px; font-size: 11px; line-height: 1.4;
+      color: #555; display: none;
+    }
+    #draw-hint.visible { display: block; }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="panel">
+    <h1>Gletscherrückgang Stubai</h1>
+    <p>3D-Relief. Ziehen zum Drehen, Rechtsklick + Ziehen zum Neigen,
+       Scrollen zum Zoomen.</p>
+    <div id="toggle">
+      <button id="btn-modern" class="active">Heute</button>
+      <button id="btn-lia">1850</button>
+    </div>
+    <p id="note">Das 1850-Gelände ist eine <b>Rekonstruktion</b> mit
+       entsprechender Höhenunsicherheit (Größenordnung mehrere Meter).</p>
+    <button id="export">Bild speichern (PNG)</button>
+    <!-- Zeichenfunktion vorerst deaktiviert:
+    <div id="draw-tools">
+      <button id="draw-point">Punkt</button>
+      <button id="draw-line">Linie</button>
+      <button id="draw-undo">Zurück</button>
+      <button id="draw-clear">Leeren</button>
+    </div>
+    <p id="draw-hint"></p>
+    -->
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+  <script>
+    // Fallback-Mitte (Stubai), falls meta.json noch nicht erzeugt wurde.
+    const FALLBACK_CENTER = [11.18, 47.05];
+    // 1.0 = maßstabsgetreu. Höher übertreibt die Höhen (steiler),
+    // niedriger flacht ab. Zum Justieren einfach hier ändern.
+    const TERRAIN_EXAGGERATION = 1.0;
+    // Font-Quelle (Glyphs) für die Text-Labels der Annotationen. Ohne
+    // erreichbare Glyphs bleiben nur die Geometrien (Punkt/Linie) sichtbar.
+    const GLYPHS_URL =
+      "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf";
+    const LABEL_FONT = ["Noto Sans Regular"];
+
+    async function loadMeta() {
+      try {
+        const response = await fetch("meta.json");
+        if (response.ok) return await response.json();
+      } catch (err) {
+        console.warn("meta.json nicht gefunden, nutze Fallback-Mitte.", err);
+      }
+      return null;
+    }
+
+    (async () => {
+      const meta = await loadMeta();
+      const center = meta && meta.center ? meta.center : FALLBACK_CENTER;
+
+      const map = new maplibregl.Map({
+        container: "map",
+        // Minimaler Style: Hintergrund + Hillshade-Overlay als sichtbare
+        // Oberfläche. Terrain-RGB liefert nur die Höhen (kein sichtbarer
+        // Layer) und wird unten per setTerrain aktiviert.
+        style: {
+          version: 8,
+          // glyphs: GLYPHS_URL,   // Zeichenfunktion vorerst deaktiviert
+          sources: {
+            // Terrain-RGB (nur Höhen). rio-rgbify erzeugt Mapbox-Terrain-
+            // RGB -> encoding 'mapbox'. Je eine Quelle pro Epoche.
+            terrain_modern: {
+              type: "raster-dem",
+              tiles: ["tiles/terrain_modern/{z}/{x}/{y}.png"],
+              encoding: "mapbox",
+              tileSize: 256, minzoom: 10, maxzoom: 16,
+            },
+            terrain_lia: {
+              type: "raster-dem",
+              tiles: ["tiles/terrain_lia/{z}/{x}/{y}.png"],
+              encoding: "mapbox",
+              tileSize: 256, minzoom: 10, maxzoom: 16,
+            },
+            // Hillshades (sichtbare Oberfläche), je Epoche.
+            hillshade_modern: {
+              type: "raster",
+              tiles: ["tiles/hillshade_modern/{z}/{x}/{y}.png"],
+              tileSize: 256, minzoom: 10, maxzoom: 16,
+              attribution: "DEM: Land Tirol",
+            },
+            hillshade_lia: {
+              type: "raster",
+              tiles: ["tiles/hillshade_lia/{z}/{x}/{y}.png"],
+              tileSize: 256, minzoom: 10, maxzoom: 16,
+              attribution: "DEM 1850: Rekonstruktion",
+            },
+            /* Zeichenfunktion vorerst deaktiviert:
+            annotations: {
+              type: "geojson",
+              data: { type: "FeatureCollection", features: [] },
+            },
+            */
+          },
+          layers: [
+            { id: "bg", type: "background",
+              paint: { "background-color": "#e8ecef" } },
+            // Beide Hillshade-Layer existieren; der Toggle blendet den
+            // jeweils passenden ein (der andere: visibility 'none').
+            { id: "hs_modern", type: "raster", source: "hillshade_modern",
+              paint: { "raster-opacity": 1 } },
+            { id: "hs_lia", type: "raster", source: "hillshade_lia",
+              layout: { visibility: "none" },
+              paint: { "raster-opacity": 1 } },
+            /* Zeichenfunktion vorerst deaktiviert:
+            { id: "ann_line", type: "line", source: "annotations",
+              filter: ["==", "$type", "LineString"],
+              paint: { "line-color": "#d62728", "line-width": 3 } },
+            { id: "ann_point", type: "circle", source: "annotations",
+              filter: ["==", "$type", "Point"],
+              paint: { "circle-radius": 5, "circle-color": "#d62728",
+                       "circle-stroke-color": "#fff",
+                       "circle-stroke-width": 2 } },
+            { id: "ann_line_label", type: "symbol", source: "annotations",
+              filter: ["==", "$type", "LineString"],
+              layout: { "symbol-placement": "line-center",
+                        "text-field": ["get", "label"],
+                        "text-font": LABEL_FONT, "text-size": 13 },
+              paint: { "text-color": "#1a1a1a", "text-halo-color": "#fff",
+                       "text-halo-width": 1.5 } },
+            { id: "ann_point_label", type: "symbol", source: "annotations",
+              filter: ["==", "$type", "Point"],
+              layout: { "text-field": ["get", "label"],
+                        "text-font": LABEL_FONT, "text-size": 13,
+                        "text-offset": [0, 1.1], "text-anchor": "top" },
+              paint: { "text-color": "#1a1a1a", "text-halo-color": "#fff",
+                       "text-halo-width": 1.5 } },
+            */
+          ],
+        },
+        center: center,
+        zoom: 12,
+        pitch: 60,
+        bearing: -20,
+        maxPitch: 80,
+        // Für den späteren Bildexport (Phase C) nötig, sonst liefert
+        // canvas.toDataURL() ein leeres Bild.
+        preserveDrawingBuffer: true,
+      });
+
+      map.addControl(
+        new maplibregl.NavigationControl({ visualizePitch: true }),
+        "top-right");
+      map.addControl(new maplibregl.ScaleControl(), "bottom-left");
+
+      // Aktive Epoche: schaltet Terrain UND zugehörigen Hillshade-Layer
+      // gemeinsam um. MapLibre hat pro Karte nur ein aktives Terrain,
+      // daher kein echter Split, sondern ein Umschalten.
+      let currentEpoch = null;
+      function setEpoch(epoch) {
+        if (epoch === currentEpoch) return;
+        const isLia = epoch === "lia";
+        map.setTerrain({
+          source: isLia ? "terrain_lia" : "terrain_modern",
+          exaggeration: TERRAIN_EXAGGERATION,
+        });
+        map.setLayoutProperty("hs_modern", "visibility",
+                              isLia ? "none" : "visible");
+        map.setLayoutProperty("hs_lia", "visibility",
+                              isLia ? "visible" : "none");
+        document.getElementById("btn-modern")
+          .classList.toggle("active", !isLia);
+        document.getElementById("btn-lia")
+          .classList.toggle("active", isLia);
+        document.getElementById("note")
+          .classList.toggle("visible", isLia);
+        currentEpoch = epoch;
+      }
+
+      document.getElementById("btn-modern")
+        .addEventListener("click", () => setEpoch("modern"));
+      document.getElementById("btn-lia")
+        .addEventListener("click", () => setEpoch("lia"));
+
+      // Bildexport: aktuelle Ansicht als PNG herunterladen. Der Canvas
+      // muss frisch gerendert sein (preserveDrawingBuffer ist gesetzt),
+      // deshalb im render-Callback abgreifen.
+      function exportImage() {
+        map.once("render", () => {
+          const date = new Date().toISOString().slice(0, 10);
+          const link = document.createElement("a");
+          link.download = `stubai_${currentEpoch}_${date}.png`;
+          link.href = map.getCanvas().toDataURL("image/png");
+          link.click();
+        });
+        map.triggerRepaint();
+      }
+      document.getElementById("export")
+        .addEventListener("click", exportImage);
+
+      /* Zeichenfunktion vorerst deaktiviert (Reaktivieren: diesen Block
+         sowie glyphs, annotations-Quelle und die ann_*-Layer oben wieder
+         einkommentieren):
+      // --- Zeichnen (Punkt/Linie + Textlabel) -----------------------
+      // Annotationen werden als Canvas-Layer gerendert -> erscheinen auch
+      // im PNG-Export. Gezeichnet wird nur in 2D (Draufsicht), weil in
+      // geneigter 3D-Ansicht die Klick-zu-Boden-Zuordnung ungenau ist.
+      const annotationFeatures = [];   // fertige Punkte/Linien
+      let drawMode = null;             // null | 'point' | 'line'
+      let lineInProgress = null;       // aktuelle, noch offene Linie
+      let saved3dView = null;          // gemerkte Neigung/Drehung
+
+      function refreshAnnotations() {
+        const features = annotationFeatures.slice();
+        if (lineInProgress && lineInProgress.geometry.coordinates.length) {
+          features.push(lineInProgress);
+        }
+        const source = map.getSource("annotations");
+        if (source) {
+          source.setData({ type: "FeatureCollection", features: features });
+        }
+      }
+
+      function flattenForDrawing() {
+        if (saved3dView) return;       // bereits flach
+        saved3dView = { pitch: map.getPitch(), bearing: map.getBearing() };
+        map.easeTo({ pitch: 0, bearing: 0, duration: 300 });
+        map.dragRotate.disable();
+        map.doubleClickZoom.disable();
+      }
+
+      function restore3dView() {
+        map.dragRotate.enable();
+        map.doubleClickZoom.enable();
+        if (saved3dView) {
+          map.easeTo({ pitch: saved3dView.pitch,
+                       bearing: saved3dView.bearing, duration: 300 });
+          saved3dView = null;
+        }
+      }
+
+      function updateDrawUi() {
+        document.getElementById("draw-point")
+          .classList.toggle("active", drawMode === "point");
+        document.getElementById("draw-line")
+          .classList.toggle("active", drawMode === "line");
+        const hint = document.getElementById("draw-hint");
+        if (drawMode === "point") {
+          hint.textContent =
+            "In die Karte klicken, um einen Punkt zu setzen.";
+          hint.classList.add("visible");
+        } else if (drawMode === "line") {
+          hint.textContent =
+            "Klicken für Stützpunkte, Doppelklick beendet die Linie.";
+          hint.classList.add("visible");
+        } else {
+          hint.classList.remove("visible");
+        }
+      }
+
+      function finishLine() {
+        if (!lineInProgress) return;
+        const coords = lineInProgress.geometry.coordinates;
+        if (coords.length >= 2) {
+          const label = prompt("Beschriftung der Linie (optional):", "");
+          lineInProgress.properties.label = label || "";
+          annotationFeatures.push(lineInProgress);
+        }
+        lineInProgress = null;
+        refreshAnnotations();
+      }
+
+      function setDrawMode(mode) {
+        finishLine();                  // offene Linie abschließen
+        drawMode = drawMode === mode ? null : mode;
+        if (drawMode) {
+          flattenForDrawing();
+        } else {
+          restore3dView();
+        }
+        updateDrawUi();
+      }
+
+      map.on("click", (event) => {
+        const point = [event.lngLat.lng, event.lngLat.lat];
+        if (drawMode === "point") {
+          const label = prompt("Beschriftung des Punkts (optional):", "");
+          annotationFeatures.push({
+            type: "Feature",
+            properties: { label: label || "" },
+            geometry: { type: "Point", coordinates: point },
+          });
+          refreshAnnotations();
+        } else if (drawMode === "line") {
+          if (!lineInProgress) {
+            lineInProgress = {
+              type: "Feature", properties: { label: "" },
+              geometry: { type: "LineString", coordinates: [] },
+            };
+          }
+          lineInProgress.geometry.coordinates.push(point);
+          refreshAnnotations();
+        }
+      });
+
+      // Doppelklick beendet die Linie (Zoom ist im Linienmodus aus).
+      map.on("dblclick", () => {
+        if (drawMode === "line") finishLine();
+      });
+
+      function undoLast() {
+        if (lineInProgress && lineInProgress.geometry.coordinates.length) {
+          lineInProgress.geometry.coordinates.pop();
+          if (!lineInProgress.geometry.coordinates.length) {
+            lineInProgress = null;
+          }
+        } else {
+          annotationFeatures.pop();
+        }
+        refreshAnnotations();
+      }
+
+      function clearAll() {
+        if (!annotationFeatures.length && !lineInProgress) return;
+        if (!confirm("Alle Zeichnungen löschen?")) return;
+        annotationFeatures.length = 0;
+        lineInProgress = null;
+        refreshAnnotations();
+      }
+
+      document.getElementById("draw-point")
+        .addEventListener("click", () => setDrawMode("point"));
+      document.getElementById("draw-line")
+        .addEventListener("click", () => setDrawMode("line"));
+      document.getElementById("draw-undo")
+        .addEventListener("click", undoLast);
+      document.getElementById("draw-clear")
+        .addEventListener("click", clearAll);
+      */
+
+      map.on("load", () => {
+        // setSky ist nicht in jeder MapLibre-Version vorhanden -> absichern.
+        if (typeof map.setSky === "function") {
+          map.setSky({
+            "sky-color": "#a7c7e7",
+            "horizon-color": "#e8ecef",
+            "fog-color": "#e8ecef",
+            "sky-horizon-blend": 0.5,
+            "horizon-fog-blend": 0.5,
+          });
+        }
+        setEpoch("modern");   // Startzustand: heute
+      });
+    })();
+  </script>
+</body>
+</html>

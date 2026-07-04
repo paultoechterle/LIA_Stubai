@@ -1,0 +1,57 @@
+# ===========================================================================
+# Rohdaten und Zwischenprodukte (groß, regenerierbar) -> nicht ins Repo
+# ===========================================================================
+# Quelldaten: DEMs, Hillshades, GeoPackage, Shapefile des Projektgebiets.
+# Mehrere hundert MB und für die Web-App nicht nötig (nur Quelle der Tiles).
+data/
+GIS/
+Literature/
+
+# Zwischenprodukte der Pipeline (reprojizierte DEMs, Terrain-RGB, Hillshade).
+app/build/
+
+# Große Rasterformate generell ausschließen (Sicherheitsnetz, egal wo sie
+# liegen). Die Web-Kacheln sind PNG und daher nicht betroffen.
+*.tif
+*.tiff
+*.vrt
+*.aux.xml
+
+# ===========================================================================
+# Fertige Web-Kacheln
+# ===========================================================================
+# app/tiles/ wird fürs statische Hosting (z. B. GitHub Pages) BENÖTIGT und
+# bleibt daher versioniert. Falls die Kacheln zu groß fürs Repo sind, die
+# nächste Zeile einkommentieren und die Tiles separat hosten (CDN/Bucket):
+# app/tiles/
+
+# ===========================================================================
+# Python
+# ===========================================================================
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+env/
+
+# ===========================================================================
+# Betriebssystem / OneDrive / Editor
+# ===========================================================================
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
+
+# ===========================================================================
+# Claude Code (lokale, maschinenspezifische Einstellungen)
+# ===========================================================================
+.claude/settings.local.json
+CLAUDE.md
+
+# ===========================================================================
+# Sonstiges
+# ===========================================================================
+*.log
+*.tmp
