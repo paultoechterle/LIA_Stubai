@@ -9,6 +9,7 @@ Literature/
 
 # Zwischenprodukte der Pipeline (reprojizierte DEMs, Terrain-RGB, Hillshade).
 app/build/
+app/tiles/
 
 # Große Rasterformate generell ausschließen (Sicherheitsnetz, egal wo sie
 # liegen). Die Web-Kacheln sind PNG und daher nicht betroffen.
