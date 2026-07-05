@@ -8,8 +8,8 @@ GIS/
 Literature/
 
 # Zwischenprodukte der Pipeline (reprojizierte DEMs, Terrain-RGB, Hillshade).
+# app/tiles/ NICHT ignorieren: wird fürs GitHub-Pages-Hosting benötigt (s.u.).
 app/build/
-app/tiles/
 
 # Große Rasterformate generell ausschließen (Sicherheitsnetz, egal wo sie
 # liegen). Die Web-Kacheln sind PNG und daher nicht betroffen.
