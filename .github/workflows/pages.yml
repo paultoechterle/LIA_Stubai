@@ -30,6 +30,10 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          # Aktiviert Pages via API, falls in den Repo-Settings noch nicht
+          # geschehen -> vermeidet "Get Pages site failed / Not Found".
+          enablement: true
       - name: Upload artifact (app/)
         uses: actions/upload-pages-artifact@v3
         with:
