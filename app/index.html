@@ -54,6 +54,16 @@
       color: #555; display: none;
     }
     #draw-hint.visible { display: block; }
+    #credits {
+      margin-top: 10px; font-size: 11px; line-height: 1.45;
+      border-top: 1px solid #ddd; padding-top: 8px; color: #444;
+    }
+    #credits summary {
+      cursor: pointer; font-weight: 600; color: #1a1a1a;
+      list-style: revert;
+    }
+    #credits p { margin: 6px 0 0; font-size: 11px; }
+    #credits a { color: #2c6fb3; }
   </style>
 </head>
 <body>
@@ -66,9 +76,27 @@
       <button id="btn-modern" class="active">Heute</button>
       <button id="btn-lia">1850</button>
     </div>
-    <p id="note">Das 1850-Gelände ist eine <b>Rekonstruktion</b> mit
-       entsprechender Höhenunsicherheit (Größenordnung mehrere Meter).</p>
+    <!--
+    <p id="note">Das 1850-Gelände ist eine Kombination aus moderner Topographie
+      und modellierten Gletscherständen basierend auf den kartierten Moränen und
+      einem eisdynamischen Modell (vgl. <a href="https://doi.org/10.5194/tc-19-753-2025"
+         target="_blank" rel="noopener">Reinthaler & Paul, 2025</a>).</p>
+    -->
     <button id="export">Bild speichern (PNG)</button>
+    <details id="credits">
+      <summary>Quellen &amp; Credits</summary>
+      <p><b>Geländemodell (5 m):</b> © Land Tirol – tiris
+         (Abt. Geoinformatik).</p>
+      <p><b>Gletscherstände 1850:</b> rekonstruiert nach
+         <a href="https://doi.org/10.5194/tc-19-753-2025"
+            target="_blank" rel="noopener">Reinthaler & Paul, 2025</a>.
+         Höhen mit entsprechender Unsicherheit.</p>
+      <p><b>Umsetzung:</b> Dr. Paul Töchterle ·
+         <a href="https://paultoechterle.at" target="_blank"
+            rel="noopener">paultoechterle.at</a> ·
+         <a href="mailto:paul.m.toechterle@gmail.com"
+            >paul.m.toechterle@gmail.com</a></p>
+    </details>
     <!-- Zeichenfunktion vorerst deaktiviert:
     <div id="draw-tools">
       <button id="draw-point">Punkt</button>
@@ -139,13 +167,19 @@
               type: "raster",
               tiles: [`${TILE_BASE}/hillshade_modern/{z}/{x}/{y}.png`],
               tileSize: 256, minzoom: 10, maxzoom: 15,
-              attribution: "DEM: Land Tirol",
+              attribution:
+                "Geländemodell 5 m: © Land Tirol – " +
+                "tiris (Abt. Geoinformatik)",
             },
             hillshade_lia: {
               type: "raster",
               tiles: [`${TILE_BASE}/hillshade_lia/{z}/{x}/{y}.png`],
               tileSize: 256, minzoom: 10, maxzoom: 15,
-              attribution: "DEM 1850: Rekonstruktion",
+              attribution:
+                "Gletscherstand 1850 (rekonstruiert): " +
+                "<a href=\"https://doi.org/10.5194/tc-19-753-2025\" " +
+                "target=\"_blank\" rel=\"noopener\">doi:10.5194/" +
+                "tc-19-753-2025</a>",
             },
             /* Zeichenfunktion vorerst deaktiviert:
             annotations: {
