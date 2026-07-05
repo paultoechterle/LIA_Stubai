@@ -11,10 +11,11 @@ eingeschränkte Rechte). Alle Pfade/Parameter stehen zentral in
 | Schritt | Skript | Zweck | Ausgabe |
 |---|---|---|---|
 | 1 | `01_inspect_dems.py` | Metadaten + Deckungsgleichheit prüfen | nur Konsolenausgabe |
-| 2 | `02_prepare_rasters.py` | DEMs reprojizieren → EPSG:3857, NoData füllen | `app/build/dem_*_3857.tif` |
+| 2 | `02_prepare_rasters.py` | Auf `project_area` zuschneiden, → EPSG:3857, NoData füllen | `app/build/dem_*_3857.tif` |
 | 3 | `03_make_terrainrgb.py` | Höhe → Terrain-RGB (rio-rgbify) | `app/build/terrainrgb_*.tif` |
 | 3b | `03b_make_hillshade.py` | Multidirektionaler Hillshade aus DEM (8-bit) | `app/build/hs_*_3857.tif` |
 | 4 | `04_make_tiles.py` | XYZ-Kacheln (gdal2tiles) | `app/tiles/<name>/{z}/{x}/{y}.png` |
+| 5 | `05_web_meta.py` | Kartenmitte/Bounds für die App | `app/meta.json` |
 
 Ausführen jeweils aus dem Projekt-Root, z. B.:
 
@@ -24,10 +25,11 @@ python scripts/02_prepare_rasters.py
 python scripts/03_make_terrainrgb.py
 python scripts/03b_make_hillshade.py
 python scripts/04_make_tiles.py
+python scripts/05_web_meta.py
 ```
 
 Nach jedem Schritt kurz das Ergebnis kontrollieren (Schritt 1 liefert die
-Sanity-Checks, Schritt 2–3b/4 schreiben Dateien).
+Sanity-Checks, die übrigen schreiben Dateien).
 
 ## Wichtige fachliche Punkte
 
@@ -45,14 +47,20 @@ Sanity-Checks, Schritt 2–3b/4 schreiben Dateien).
   gdal2tiles akzeptiertes 8-bit-Format (Float-Hillshades scheitern dort).
   Parameter (Höhenwinkel, z-Faktor) stehen in `config.py`.
 
-## Bekanntes Thema: NoData-Rand
+## Zuschnitt aufs Projektgebiet
 
-Die DEMs haben große NoData-Ränder außerhalb des Tals (~1/3 der Fläche).
-Schritt 2 füllt diese aktuell auf die Minimalhöhe → im 3D entsteht dort
-eine flache Ebene. Für den ersten Prototyp ist das ok (der Kartenaus-
-schnitt wird in Phase B aufs Tal begrenzt). Später ggf. die build-Raster
-vor dem Kacheln auf die Tal-Bounding-Box zuschneiden, um flache Ränder
-und unnötige Kacheln zu vermeiden.
+Schritt 2 schneidet die DEMs auf die Ausdehnung von
+`data/project_area.shp` (+ Puffer `AOI_BUFFER`) zu, bevor reprojiziert
+wird. Das hat zwei Effekte:
+
+- **Viel weniger Kacheln:** ohne Zuschnitt wurde das gesamte, überwiegend
+  leere DEM-Rechteck (~51 × 55 km) gekachelt (≈ 90.000 Dateien / 1,2 GB).
+  Der Zuschnitt begrenzt das auf das Tal.
+- **Keine flache Rand-Ebene** mehr im 3D, weil der große NoData-Rand gar
+  nicht erst mitverarbeitet wird.
+
+Passt der Ausschnitt nicht, `AOI_PATH`/`AOI_BUFFER` in `config.py` ändern
+und ab Schritt 2 neu laufen lassen.
 
 ## Web-App (Phase B)
 
@@ -70,6 +78,25 @@ cd app
 python -m http.server 8000
 ```
 
-Im Browser `http://localhost:8000/` öffnen. Es erscheint das aktuelle
-3D-Relief (Hillshade über Terrain-RGB). Vorher/Nachher-Toggle, Export
-und Zeichnen folgen in Phase C.
+Im Browser `http://localhost:8000/` öffnen. Es erscheint das 3D-Relief
+mit Vorher/Nachher-Toggle (heute/1850) und PNG-Export. (Die
+Zeichenfunktion ist im HTML aktuell auskommentiert.)
+
+## Deployment auf GitHub Pages (Phase E)
+
+Die App ist statisch und wird über GitHub Actions veröffentlicht
+(`.github/workflows/pages.yml` deployt den `app/`-Ordner).
+
+1. **Tiles müssen ins Repo.** Sie sind in `.gitignore` ausgeschlossen –
+   sobald sie nach dem Zuschnitt klein genug sind (Größe prüfen!), die
+   Zeile `app/tiles/` in `.gitignore` entfernen und committen.
+2. Repo zu GitHub pushen.
+3. Auf GitHub unter **Settings → Pages → Build and deployment → Source**
+   „GitHub Actions" wählen.
+4. Der Workflow läuft bei jedem Push auf `main`/`master`; die Seiten-URL
+   steht danach in der Actions-Ausgabe.
+
+Läuft die App unter einer Projekt-URL wie
+`https://<user>.github.io/<repo>/`, funktionieren die relativen
+Tile-Pfade (`TILE_BASE = "tiles"` in `index.html`) unverändert, weil die
+Tiles im selben `app/`-Ordner liegen.

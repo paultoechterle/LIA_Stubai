@@ -87,6 +87,10 @@
     // 1.0 = maßstabsgetreu. Höher übertreibt die Höhen (steiler),
     // niedriger flacht ab. Zum Justieren einfach hier ändern.
     const TERRAIN_EXAGGERATION = 1.0;
+    // Basis-URL der Kacheln. Lokal: "tiles" (gleicher Ordner). Fürs
+    // öffentliche Hosting hier die absolute CDN-/Bucket-URL eintragen,
+    // z. B. "https://mein-bucket.r2.dev" (ohne Schrägstrich am Ende).
+    const TILE_BASE = "tiles";
     // Font-Quelle (Glyphs) für die Text-Labels der Annotationen. Ohne
     // erreichbare Glyphs bleiben nur die Geometrien (Punkt/Linie) sichtbar.
     const GLYPHS_URL =
@@ -120,27 +124,27 @@
             // RGB -> encoding 'mapbox'. Je eine Quelle pro Epoche.
             terrain_modern: {
               type: "raster-dem",
-              tiles: ["tiles/terrain_modern/{z}/{x}/{y}.png"],
+              tiles: [`${TILE_BASE}/terrain_modern/{z}/{x}/{y}.png`],
               encoding: "mapbox",
-              tileSize: 256, minzoom: 10, maxzoom: 16,
+              tileSize: 256, minzoom: 10, maxzoom: 15,
             },
             terrain_lia: {
               type: "raster-dem",
-              tiles: ["tiles/terrain_lia/{z}/{x}/{y}.png"],
+              tiles: [`${TILE_BASE}/terrain_lia/{z}/{x}/{y}.png`],
               encoding: "mapbox",
-              tileSize: 256, minzoom: 10, maxzoom: 16,
+              tileSize: 256, minzoom: 10, maxzoom: 15,
             },
             // Hillshades (sichtbare Oberfläche), je Epoche.
             hillshade_modern: {
               type: "raster",
-              tiles: ["tiles/hillshade_modern/{z}/{x}/{y}.png"],
-              tileSize: 256, minzoom: 10, maxzoom: 16,
+              tiles: [`${TILE_BASE}/hillshade_modern/{z}/{x}/{y}.png`],
+              tileSize: 256, minzoom: 10, maxzoom: 15,
               attribution: "DEM: Land Tirol",
             },
             hillshade_lia: {
               type: "raster",
-              tiles: ["tiles/hillshade_lia/{z}/{x}/{y}.png"],
-              tileSize: 256, minzoom: 10, maxzoom: 16,
+              tiles: [`${TILE_BASE}/hillshade_lia/{z}/{x}/{y}.png`],
+              tileSize: 256, minzoom: 10, maxzoom: 15,
               attribution: "DEM 1850: Rekonstruktion",
             },
             /* Zeichenfunktion vorerst deaktiviert:

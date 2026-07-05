@@ -32,6 +32,13 @@ DEM_LIA: Path = DATA_DIR / "DEM_5m_LIA.tif"           # Gletscherstand 1850
 HILLSHADE_MODERN: Path = DATA_DIR / "HS_5m_modern.tif"
 HILLSHADE_LIA: Path = DATA_DIR / "HS_5m_LIA.tif"
 
+# --- Projektgebiet (Zuschnitt) ------------------------------------------
+# Vor dem Kacheln werden die Raster auf dieses Gebiet zugeschnitten, damit
+# nur das Tal gekachelt wird statt des großen, leeren DEM-Randes. Das
+# reduziert die Kachelzahl massiv und entfernt die flache Rand-Ebene im 3D.
+AOI_PATH: Path = DATA_DIR / "project_area.shp"
+AOI_BUFFER: float = 200.0     # Puffer um das Gebiet in Metern (Quell-CRS)
+
 # --- Projektionsparameter ------------------------------------------------
 SRC_CRS: str = "EPSG:31254"      # MGI / Austria GK West (Ausgangs-CRS)
 WEB_CRS: str = "EPSG:3857"       # Web Mercator (von MapLibre erwartet)
@@ -43,10 +50,10 @@ RGBIFY_BASE: float = -10000.0
 RGBIFY_INTERVAL: float = 0.1
 
 # --- Kachel-Parameter ----------------------------------------------------
-# 5 m Auflösung entspricht grob Zoom 15-16; höher zu kacheln bringt keine
-# zusätzliche Information, kostet aber Speicher und Ladezeit.
+# 5 m Auflösung entspricht grob Zoom 15; z16 wäre bereits Überabtastung
+# (z15 ~ 3,3 m/px bei 47° N) und vervierfacht nur die Kachelzahl.
 MIN_ZOOM: int = 10
-MAX_ZOOM: int = 16
+MAX_ZOOM: int = 15
 
 # Resampling: Terrain-RGB MUSS "near" sein, sonst werden die kodierten
 # Höhenwerte interpoliert und dadurch verfälscht. Overlays (Hillshade,
