@@ -39,6 +39,12 @@ HILLSHADE_LIA: Path = DATA_DIR / "HS_5m_LIA.tif"
 AOI_PATH: Path = DATA_DIR / "project_area.shp"
 AOI_BUFFER: float = 200.0     # Puffer um das Gebiet in Metern (Quell-CRS)
 
+# --- POIs (Gipfel & Gletscher) ------------------------------------------
+# TIRIS-Export (Quelle, EPSG:31254) -> schlanke, web-fertige GeoJSON in
+# WGS84 fürs MapLibre-Rendering (Schritt 07_make_pois.py).
+POIS_SRC: Path = PROJECT_ROOT / "GIS" / "temp files" / "POIs_all.geojson"
+POIS_OUT: Path = PROJECT_ROOT / "app" / "pois.geojson"
+
 # --- Projektionsparameter ------------------------------------------------
 SRC_CRS: str = "EPSG:31254"      # MGI / Austria GK West (Ausgangs-CRS)
 WEB_CRS: str = "EPSG:3857"       # Web Mercator (von MapLibre erwartet)

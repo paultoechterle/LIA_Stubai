@@ -32,12 +32,12 @@
       color: #8a4b00; display: none;
     }
     #note.visible { display: block; }
-    #export {
+    #export, #toggle-pois {
       margin-top: 8px; width: 100%; padding: 7px 0; font-size: 13px;
       border: 1px solid #bbb; border-radius: 6px; background: #f4f4f4;
       color: #1a1a1a; cursor: pointer;
     }
-    #export:hover { background: #e9e9e9; }
+    #export:hover, #toggle-pois:hover { background: #e9e9e9; }
     #draw-tools {
       display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;
     }
@@ -82,6 +82,7 @@
       einem eisdynamischen Modell (vgl. <a href="https://doi.org/10.5194/tc-19-753-2025"
          target="_blank" rel="noopener">Reinthaler & Paul, 2025</a>).</p>
     -->
+    <button id="toggle-pois">Gipfel &amp; Gletscher ausblenden</button>
     <button id="export">Bild speichern (PNG)</button>
     <details id="credits">
       <summary>Quellen &amp; Credits</summary>
@@ -123,7 +124,11 @@
     // erreichbare Glyphs bleiben nur die Geometrien (Punkt/Linie) sichtbar.
     const GLYPHS_URL =
       "https://fonts.openmaptiles.org/{fontstack}/{range}.pbf";
-    const LABEL_FONT = ["Noto Sans Regular"];
+    // Muss ein auf dem Fontserver vorhandener Stack sein. openmaptiles
+    // bietet u. a. "Open Sans Regular" und "Klokantech Noto Sans Regular"
+    // -> ein Name wie "Noto Sans Regular" existiert dort NICHT (404, keine
+    // Labels).
+    const LABEL_FONT = ["Open Sans Regular"];
 
     async function loadMeta() {
       try {
@@ -146,7 +151,9 @@
         // Layer) und wird unten per setTerrain aktiviert.
         style: {
           version: 8,
-          // glyphs: GLYPHS_URL,   // Zeichenfunktion vorerst deaktiviert
+          // Glyphs (Schriften) für die POI-/Text-Labels. Externe Quelle
+          // (openmaptiles). Ohne erreichbare Glyphs bleiben Texte leer.
+          glyphs: GLYPHS_URL,
           sources: {
             // Terrain-RGB (nur Höhen). rio-rgbify erzeugt Mapbox-Terrain-
             // RGB -> encoding 'mapbox'. Je eine Quelle pro Epoche.
@@ -181,6 +188,11 @@
                 "target=\"_blank\" rel=\"noopener\">doi:10.5194/" +
                 "tc-19-753-2025</a>",
             },
+            // POIs (Gipfel & Gletscher), erzeugt von 07_make_pois.py.
+            pois: {
+              type: "geojson",
+              data: "pois.geojson",
+            },
             /* Zeichenfunktion vorerst deaktiviert:
             annotations: {
               type: "geojson",
@@ -198,6 +210,62 @@
             { id: "hs_lia", type: "raster", source: "hillshade_lia",
               layout: { visibility: "none" },
               paint: { "raster-opacity": 1 } },
+            // --- POIs -------------------------------------------------
+            // Symbole werden von MapLibre automatisch aufs Terrain
+            // drapiert und billboarded (Text bleibt zur Kamera gedreht).
+            // symbol-sort-key = -Höhe: höhere Gipfel gewinnen Kollisionen.
+            // Markante Gipfel (regional bedeutend) – immer sichtbar.
+            { id: "poi_peak_major", type: "symbol", source: "pois",
+              filter: ["all", ["==", ["get", "kind"], "peak"],
+                              ["==", ["get", "rank"], "major"]],
+              layout: {
+                "icon-image": "peak", "icon-size": 0.9,
+                "icon-anchor": "bottom", "icon-allow-overlap": true,
+                "text-field": ["case", ["has", "ele"],
+                               ["concat", ["get", "name"], "\n",
+                                ["to-string", ["get", "ele"]], " m"],
+                               ["get", "name"]],
+                "text-font": LABEL_FONT, "text-anchor": "top",
+                "text-offset": [0, 0.4],
+                "text-size": ["interpolate", ["linear"], ["zoom"],
+                              11, 11, 15, 14],
+                "text-variable-anchor": ["top", "bottom", "left", "right"],
+                "text-radial-offset": 0.6, "text-justify": "auto",
+                "symbol-sort-key": ["-", 0, ["get", "ele"]] },
+              paint: { "text-color": "#1a1a1a", "text-halo-color": "#fff",
+                       "text-halo-width": 1.6 } },
+            // Lokale Gipfel – erst beim Reinzoomen (ab z13).
+            { id: "poi_peak_minor", type: "symbol", source: "pois",
+              minzoom: 13,
+              filter: ["all", ["==", ["get", "kind"], "peak"],
+                              ["==", ["get", "rank"], "minor"]],
+              layout: {
+                "icon-image": "peak", "icon-size": 0.75,
+                "icon-anchor": "bottom", "icon-allow-overlap": true,
+                "text-field": ["case", ["has", "ele"],
+                               ["concat", ["get", "name"], "\n",
+                                ["to-string", ["get", "ele"]], " m"],
+                               ["get", "name"]],
+                "text-font": LABEL_FONT, "text-anchor": "top",
+                "text-offset": [0, 0.4],
+                "text-size": ["interpolate", ["linear"], ["zoom"],
+                              13, 11, 15, 13],
+                "text-variable-anchor": ["top", "bottom", "left", "right"],
+                "text-radial-offset": 0.55, "text-justify": "auto",
+                "symbol-sort-key": ["-", 0, ["get", "ele"]] },
+              paint: { "text-color": "#333", "text-halo-color": "#fff",
+                       "text-halo-width": 1.4 } },
+            // Gletscher – eigener Stil (blau, größer, kein Icon).
+            { id: "poi_glacier", type: "symbol", source: "pois",
+              filter: ["==", ["get", "kind"], "glacier"],
+              layout: {
+                "text-field": ["get", "name"], "text-font": LABEL_FONT,
+                "text-size": ["interpolate", ["linear"], ["zoom"],
+                              11, 13, 15, 17],
+                "text-letter-spacing": 0.05, "text-max-width": 8,
+                "symbol-sort-key": 0 },
+              paint: { "text-color": "#2166ac", "text-halo-color": "#fff",
+                       "text-halo-width": 2 } },
             /* Zeichenfunktion vorerst deaktiviert:
             { id: "ann_line", type: "line", source: "annotations",
               filter: ["==", "$type", "LineString"],
@@ -283,6 +351,22 @@
       }
       document.getElementById("export")
         .addEventListener("click", exportImage);
+
+      // POIs (Gipfel & Gletscher) gemeinsam ein-/ausblenden. Praktisch
+      // für einen aufgeräumten Bildexport.
+      const POI_LAYERS = ["poi_peak_major", "poi_peak_minor",
+                          "poi_glacier"];
+      let poisVisible = true;
+      document.getElementById("toggle-pois")
+        .addEventListener("click", () => {
+          poisVisible = !poisVisible;
+          const visibility = poisVisible ? "visible" : "none";
+          POI_LAYERS.forEach((id) =>
+            map.setLayoutProperty(id, "visibility", visibility));
+          document.getElementById("toggle-pois").textContent = poisVisible
+            ? "Gipfel & Gletscher ausblenden"
+            : "Gipfel & Gletscher einblenden";
+        });
 
       /* Zeichenfunktion vorerst deaktiviert (Reaktivieren: diesen Block
          sowie glyphs, annotations-Quelle und die ann_*-Layer oben wieder
@@ -424,7 +508,29 @@
         .addEventListener("click", clearAll);
       */
 
+      // Kleines Dreieck als Gipfelmarker: per Canvas erzeugt (offline,
+      // keine externe Grafik) und in MapLibre als Bild registriert.
+      function addPeakIcon() {
+        const size = 14;
+        const canvas = document.createElement("canvas");
+        canvas.width = canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        ctx.beginPath();
+        ctx.moveTo(size / 2, 1);
+        ctx.lineTo(size - 1, size - 2);
+        ctx.lineTo(1, size - 2);
+        ctx.closePath();
+        ctx.fillStyle = "#3a3a3a";
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "#fff";
+        ctx.stroke();
+        map.addImage("peak", ctx.getImageData(0, 0, size, size),
+                     { pixelRatio: 2 });
+      }
+
       map.on("load", () => {
+        if (!map.hasImage("peak")) addPeakIcon();
         // setSky ist nicht in jeder MapLibre-Version vorhanden -> absichern.
         if (typeof map.setSky === "function") {
           map.setSky({
