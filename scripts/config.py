@@ -22,7 +22,47 @@ TILES_DIR: Path = PROJECT_ROOT / "app" / "tiles"      # fertige XYZ-Kacheln
 
 # --- Eingangsdaten (vorhanden) ------------------------------------------
 DEM_MODERN: Path = DATA_DIR / "DEM_5m_modern.tif"
-DEM_LIA: Path = DATA_DIR / "DEM_5m_LIA.tif"           # Gletscherstand 1850
+# 1850-DEM der Pipeline: das weiche Cubic-Composite aus
+# 00_build_lia_composite.py. Die alte, grob resampelte QGIS-Variante
+# (DEM_5m_LIA.tif) bleibt als Fallback auf der Platte, wird aber nicht
+# mehr verarbeitet.
+DEM_LIA: Path = DATA_DIR / "DEM_5m_LIA_cubic.tif"     # Gletscherstand 1850
+
+# --- 1850-Composite aus der Reinthaler-Gletscheroberfläche --------------
+# Rohdaten: Alpenweite LIA-Gletscheroberfläche (Reinthaler et al. 2024),
+# grob aufgelöst und größtenteils NoData (nur Gletscherflächen). Das
+# Script 00_build_lia_composite.py schneidet sie aufs Projektgebiet zu,
+# resampled sie per Cubic-Spline aufs 5-m-Raster des modernen DEM und
+# legt sie gefedert als Eiskörper auf das moderne Terrain -> weicheres,
+# schöneres 1850-DEM als die grob resampelte QGIS-Variante. Das Ergebnis
+# wird nach DEM_LIA geschrieben und von der Pipeline (01/02) konsumiert.
+REINTHALER_LIA_SRC: Path = (
+    DATA_DIR / "Reinthaler et al 2024" / "LIA_glacier_surface_Alps.tif")
+
+# Puffer (in Metern, Quell-CRS) für den Zuschnitt der groben Quelle. Etwas
+# großzügig, damit der Cubic-Kernel am Rand echten Kontext hat statt
+# gefüllter Werte.
+LIA_CLIP_BUFFER: float = 500.0
+
+# NoData-/Sentinel-Werte der Eingangsraster (kein sauberer NoData-Tag).
+LIA_SRC_NODATA: float = -10000.0
+MODERN_NODATA: float = -9999.0
+
+# Nach dem Cubic-Spline optional zusätzliche maskierte Glättungs-
+# Iterationen (Normalized Convolution) zum Polieren der Treppenstufen der
+# groben Quelle. 0 = reines Cubic-Spline. Sigma in Ziel-Pixeln (5 m).
+LIA_SMOOTH_ITERATIONS: int = 2
+LIA_SMOOTH_SIGMA: float = 1.5
+
+# Maskenschwelle: Anteil Gletscherüberdeckung, ab dem ein Zielpixel als
+# Gletscher gilt (0.5 = Pixelmittelpunkt lag im Gletscher).
+LIA_MASK_THRESHOLD: float = 0.5
+
+# Feathering des Gletscherrandes: Die Eisdicke fadet von der Maskenkante
+# (Dicke 0) ueber diesen Radius nach innen auf volle Dicke. Vermeidet die
+# harte Stufe zum modernen DEM und entspricht dem natuerlichen Auslaufen
+# eines Gletschers auf ~0 Dicke am Rand. In Metern; 0 = harte Kante.
+LIA_FEATHER_RADIUS: float = 50.0
 
 # --- Hillshades ----------------------------------------------------------
 # Die Hillshade-Overlays werden NICHT aus diesen Dateien gekachelt,

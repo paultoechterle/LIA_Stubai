@@ -14,9 +14,11 @@ Wichtige Details:
   * Das moderne DEM trägt KEIN NoData-Tag, enthält aber den Sentinel
     -9999. Dieser muss explizit als NoData angegeben werden, sonst wird
     er beim Reprojizieren mit echten Höhen verschmiert.
-  * Das 1850-DEM hat NoData -10000.
+  * Das 1850-DEM (Cubic-Composite aus 00_build_lia_composite.py) nutzt
+    denselben NoData-Sentinel -9999 (außerhalb der Gletscher ist es
+    identisch zum modernen DEM).
   * Nach dem Füllen wird ``nodata=None`` gesetzt, weil das anschließende
-    Terrain-RGB-Encoding (uint8) keinen Wert wie -10000 halten kann.
+    Terrain-RGB-Encoding (uint8) keinen Wert wie -9999 halten kann.
 
 Ausführen:
     python scripts/02_prepare_rasters.py
@@ -144,11 +146,12 @@ def prepare(src_path, dst_path, src_nodata: float) -> None:
 def main() -> None:
     """Bereite beide DEMs für das Terrain-RGB-Encoding auf."""
     config.BUILD_DIR.mkdir(parents=True, exist_ok=True)
-    # Moderne: Sentinel -9999 (kein NoData-Tag). 1850: NoData -10000.
+    # Beide DEMs nutzen den Sentinel -9999 (moderne: kein NoData-Tag;
+    # 1850-Composite: gleicher Sentinel, ausserhalb der Gletscher == modern).
     prepare(config.DEM_MODERN,
-            config.BUILD_DIR / "dem_modern_3857.tif", -9999.0)
+            config.BUILD_DIR / "dem_modern_3857.tif", config.MODERN_NODATA)
     prepare(config.DEM_LIA,
-            config.BUILD_DIR / "dem_lia_3857.tif", -10000.0)
+            config.BUILD_DIR / "dem_lia_3857.tif", config.MODERN_NODATA)
     # Hillshades werden NICHT hier aufbereitet: Overlays dürfen NoData
     # nicht auf einen flachen Wert füllen (das gehört transparent). Sie
     # werden in 03b_make_hillshade.py direkt aus diesen DEMs erzeugt.
