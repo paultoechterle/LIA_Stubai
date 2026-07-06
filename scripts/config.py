@@ -79,6 +79,13 @@ HILLSHADE_LIA: Path = DATA_DIR / "HS_5m_LIA.tif"
 AOI_PATH: Path = DATA_DIR / "project_area.shp"
 AOI_BUFFER: float = 200.0     # Puffer um das Gebiet in Metern (Quell-CRS)
 
+# Ebene ausserhalb des Projektgebiets (Schritt 02): Alle Werte ausserhalb
+# der Polygonform werden bei BEIDEN DEMs auf diese Höhe gesetzt -> flacher
+# Sockel ums Tal (kein NoData, sonst Wand/Grube im MapLibre-Terrain).
+# None = automatisch die minimale Höhe im Projektgebiet (aus dem modernen
+# DEM); alternativ ein fester Wert in Metern (z. B. 500.0).
+AOI_PLANE_HEIGHT: float | None = None
+
 # --- POIs (Gipfel & Gletscher) ------------------------------------------
 # TIRIS-Export (Quelle, EPSG:31254) -> schlanke, web-fertige GeoJSON in
 # WGS84 fürs MapLibre-Rendering (Schritt 07_make_pois.py).

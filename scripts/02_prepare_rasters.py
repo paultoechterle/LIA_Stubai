@@ -1,24 +1,28 @@
-"""Zuschnitt aufs Projektgebiet, Reprojektion nach EPSG:3857, NoData füllen.
+"""Zuschnitt aufs Projektgebiet, Reprojektion nach EPSG:3857, Ebene aussen.
 
 Für jedes DEM wird zuerst das Fenster ausgeschnitten, das das
 Projektgebiet (``project_area.shp`` + Puffer) abdeckt, dann der Höhen-
-Float bilinear nach Web Mercator umprojiziert, NoData-Ränder/-Löcher
-gefüllt und das NoData-Tag entfernt. Ergebnis ist die Eingabe fürs
-Terrain-RGB-Encoding (Schritt 03) und den Hillshade (Schritt 03b).
+Float bilinear nach Web Mercator umprojiziert und NoData-Ränder/-Löcher
+gefüllt. Anschliessend werden alle Werte AUSSERHALB der Polygonform von
+``project_area.shp`` auf eine einheitliche Ebenen-Höhe gesetzt (minimale
+Höhe im Projektgebiet bzw. ``config.AOI_PLANE_HEIGHT``). So entsteht rund
+um das Tal eine flache Ebene statt herausragender Berge/Gletscher.
 
-Der Zuschnitt reduziert die spätere Kachelzahl massiv (nur das Tal statt
-des gesamten, überwiegend leeren DEM-Rechtecks) und entfernt die flache
-Rand-Ebene, die sonst im 3D um das Tal herum entstünde.
+Bewusst KEIN NoData ausserhalb: MapLibre-Terrain (raster-dem) hat kein
+Alpha; NoData würde als Wand/Grube gerendert. Eine flache, niedrige Ebene
+liefert stattdessen einen sauberen Sockel, auf dem das Tal sitzt. Beide
+DEMs (modern + 1850) nutzen dieselbe Ebenen-Höhe, damit der
+Vorher/Nachher-Toggle die Ebene nicht verschiebt.
+
+Ergebnis ist die Eingabe fürs Terrain-RGB-Encoding (Schritt 03) und den
+Hillshade (Schritt 03b).
 
 Wichtige Details:
   * Das moderne DEM trägt KEIN NoData-Tag, enthält aber den Sentinel
     -9999. Dieser muss explizit als NoData angegeben werden, sonst wird
     er beim Reprojizieren mit echten Höhen verschmiert.
   * Das 1850-DEM (Cubic-Composite aus 00_build_lia_composite.py) nutzt
-    denselben NoData-Sentinel -9999 (außerhalb der Gletscher ist es
-    identisch zum modernen DEM).
-  * Nach dem Füllen wird ``nodata=None`` gesetzt, weil das anschließende
-    Terrain-RGB-Encoding (uint8) keinen Wert wie -9999 halten kann.
+    denselben NoData-Sentinel -9999.
 
 Ausführen:
     python scripts/02_prepare_rasters.py
@@ -28,6 +32,7 @@ import geopandas as gpd
 import numpy as np
 import rasterio
 from rasterio.enums import Resampling
+from rasterio.features import geometry_mask
 from rasterio.fill import fillnodata
 from rasterio.warp import calculate_default_transform, reproject
 from rasterio.windows import bounds as window_bounds
@@ -125,36 +130,87 @@ def fill_gaps(data: np.ndarray, nodata: float) -> np.ndarray:
     return filled
 
 
-def prepare(src_path, dst_path, src_nodata: float) -> None:
-    """Schneide zu, reprojiziere, fülle NoData und schreibe das Ergebnis.
+def aoi_polygon_mask(profile) -> np.ndarray:
+    """Rastere das Projektgebiet-Polygon auf das aufbereitete Raster.
+
+    Args:
+        profile: Rasterio-Profil des reprojizierten DEM (crs, transform,
+            width, height).
+
+    Returns:
+        np.ndarray: Boolesche Maske (True == innerhalb des Projektgebiets).
+    """
+    aoi = gpd.read_file(config.AOI_PATH)
+    if aoi.crs is not None and str(aoi.crs) != str(profile["crs"]):
+        aoi = aoi.to_crs(profile["crs"])
+    return geometry_mask(aoi.geometry,
+                         out_shape=(profile["height"], profile["width"]),
+                         transform=profile["transform"], invert=True)
+
+
+def prepare_dem(src_path, src_nodata: float) -> tuple:
+    """Schneide zu, reprojiziere, fülle NoData und maskiere das Gebiet.
 
     Args:
         src_path: Pfad zum Eingangs-DEM.
-        dst_path: Pfad für das aufbereitete DEM (EPSG:3857, ohne NoData).
         src_nodata: NoData-/Sentinel-Wert des Quell-DEM.
+
+    Returns:
+        tuple: (filled, profile, inside) mit dem gefüllten Höhen-Array
+        (float32), dem Profil (EPSG:3857) und der Innen-Maske des
+        Projektgebiets.
     """
     print(f"\n{src_path.name} (NoData={src_nodata}):")
     data, profile = reproject_clip(src_path, config.WEB_CRS, src_nodata)
     print(f"  zugeschnitten + reprojiziert nach {config.WEB_CRS} "
           f"({profile['width']} x {profile['height']} px)")
     filled = fill_gaps(data, src_nodata)
+    inside = aoi_polygon_mask(profile)
+    return filled, profile, inside
+
+
+def write_with_plane(filled, profile, inside, plane_height: float,
+                     dst_path) -> None:
+    """Setze Werte ausserhalb des Projektgebiets auf die Ebene und schreibe.
+
+    Args:
+        filled: Gefülltes Höhen-Array (float32).
+        profile: Rasterio-Profil (EPSG:3857, nodata=None).
+        inside: Innen-Maske des Projektgebiets (True == innerhalb).
+        plane_height: Einheitliche Höhe der Aussen-Ebene in Metern.
+        dst_path: Zielpfad für das aufbereitete DEM.
+    """
+    out = filled.copy()
+    out[~inside] = plane_height
     with rasterio.open(dst_path, "w", **profile) as dst:
-        dst.write(filled, 1)
-    print(f"  geschrieben -> {dst_path}")
+        dst.write(out, 1)
+    print(f"  ausserhalb Projektgebiet -> Ebene {plane_height:.1f} m "
+          f"({int((~inside).sum())} px), geschrieben -> {dst_path}")
 
 
 def main() -> None:
-    """Bereite beide DEMs für das Terrain-RGB-Encoding auf."""
+    """Bereite beide DEMs auf und lege aussen eine gemeinsame Ebene an."""
     config.BUILD_DIR.mkdir(parents=True, exist_ok=True)
-    # Beide DEMs nutzen den Sentinel -9999 (moderne: kein NoData-Tag;
-    # 1850-Composite: gleicher Sentinel, ausserhalb der Gletscher == modern).
-    prepare(config.DEM_MODERN,
-            config.BUILD_DIR / "dem_modern_3857.tif", config.MODERN_NODATA)
-    prepare(config.DEM_LIA,
-            config.BUILD_DIR / "dem_lia_3857.tif", config.MODERN_NODATA)
-    # Hillshades werden NICHT hier aufbereitet: Overlays dürfen NoData
-    # nicht auf einen flachen Wert füllen (das gehört transparent). Sie
-    # werden in 03b_make_hillshade.py direkt aus diesen DEMs erzeugt.
+    build = config.BUILD_DIR
+
+    # Modernes DEM aufbereiten; daraus die gemeinsame Ebenen-Höhe ableiten.
+    modern_filled, modern_profile, modern_inside = prepare_dem(
+        config.DEM_MODERN, config.MODERN_NODATA)
+    if config.AOI_PLANE_HEIGHT is not None:
+        plane = float(config.AOI_PLANE_HEIGHT)
+        print(f"  Ebenen-Höhe (fest aus config): {plane:.1f} m")
+    else:
+        plane = float(modern_filled[modern_inside].min())
+        print(f"  Ebenen-Höhe (Min im Projektgebiet): {plane:.1f} m")
+    write_with_plane(modern_filled, modern_profile, modern_inside, plane,
+                     build / "dem_modern_3857.tif")
+
+    # 1850-DEM mit derselben Ebenen-Höhe.
+    lia_filled, lia_profile, lia_inside = prepare_dem(
+        config.DEM_LIA, config.MODERN_NODATA)
+    write_with_plane(lia_filled, lia_profile, lia_inside, plane,
+                     build / "dem_lia_3857.tif")
+
     print("\nFertig. Weiter mit 03_make_terrainrgb.py")
 
 

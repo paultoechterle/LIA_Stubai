@@ -16,8 +16,8 @@ Warum dieser Weg das bekannte Blockmuster vermeidet:
     danach ueber eine separat resampelte Maske wiederhergestellt.
 
 Ablauf:
-  1. Reinthaler-Raster auf die (gepufferte) Ausdehnung des modernen DEM
-     zuschneiden (im nativen CRS/Aufloesung der Quelle).
+  1. Reinthaler-Raster zuerst aufs Projektgebiet (project_area.shp,
+     gepuffert) zuschneiden (im nativen CRS/Aufloesung der Quelle).
   2. NoData im Ausschnitt fuellen (glatte Extrapolation).
   3. Gefuelltes Feld per Cubic-Spline aufs exakte Modern-Raster
      reprojizieren (CRS + 5 m in einem Schritt).
@@ -36,11 +36,11 @@ Ausfuehren:
     python scripts/00_build_lia_composite.py
 """
 
+import geopandas as gpd
 import numpy as np
 import rasterio
 from rasterio.enums import Resampling
 from rasterio.fill import fillnodata
-from rasterio.transform import array_bounds
 from rasterio.warp import reproject, transform_bounds
 from rasterio.windows import from_bounds
 from scipy.ndimage import distance_transform_edt, gaussian_filter
@@ -68,12 +68,28 @@ def read_modern_grid() -> tuple:
                 modern)
 
 
+def aoi_bounds_in(crs) -> tuple:
+    """Ermittle die Bounds des Projektgebiets in einem CRS.
+
+    Args:
+        crs: Ziel-CRS, in dem die Bounds benötigt werden (hier das CRS
+            des modernen DEM / Zielrasters).
+
+    Returns:
+        tuple: (minx, miny, maxx, maxy) der Ausdehnung von project_area.shp.
+    """
+    aoi = gpd.read_file(config.AOI_PATH)
+    if aoi.crs is not None and str(aoi.crs) != str(crs):
+        aoi = aoi.to_crs(crs)
+    return tuple(aoi.total_bounds)
+
+
 def clip_source_to(dst_crs, dst_bounds, buffer: float) -> tuple:
     """Schneide die Reinthaler-Quelle auf die Ziel-Ausdehnung zu.
 
     Args:
-        dst_crs: CRS des Zielrasters (modernes DEM).
-        dst_bounds: (minx, miny, maxx, maxy) des Zielrasters in dst_crs.
+        dst_crs: CRS der Ziel-Bounds (modernes DEM / Projektgebiet).
+        dst_bounds: (minx, miny, maxx, maxy) des Projektgebiets in dst_crs.
         buffer: Puffer in Metern (im Quell-CRS) um die Ausdehnung.
 
     Returns:
@@ -272,14 +288,14 @@ def main() -> None:
     print(f"Modernes Ziel-DEM: {config.DEM_MODERN.name}")
     profile, dst_transform, dst_crs, width, height, modern = \
         read_modern_grid()
-    # array_bounds liefert (left, bottom, right, top) = (minx, miny, maxx,
-    # maxy) -> passt direkt fuer transform_bounds/from_bounds.
-    dst_bounds = array_bounds(height, width, dst_transform)
     print(f"  Zielraster: {width} x {height} px, CRS={dst_crs}")
 
-    print("\nSchritt 1/2: Reinthaler zuschneiden")
+    # Reinthaler-Original zuerst aufs Projektgebiet zuschneiden (der Rest
+    # der groben, alpenweiten Quelle wird gar nicht erst verarbeitet).
+    print("\nSchritt 1/2: Reinthaler auf project_area.shp zuschneiden")
+    aoi_bounds = aoi_bounds_in(dst_crs)
     data, src_transform, src_crs = clip_source_to(
-        dst_crs, dst_bounds, config.LIA_CLIP_BUFFER)
+        dst_crs, aoi_bounds, config.LIA_CLIP_BUFFER)
 
     print("\nSchritt 2/2: Cubic-Spline aufs 5-m-Raster + Composite")
     surface, mask = resample_cubic(

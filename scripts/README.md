@@ -10,22 +10,34 @@ eingeschränkte Rechte). Alle Pfade/Parameter stehen zentral in
 
 | Schritt | Skript | Zweck | Ausgabe |
 |---|---|---|---|
+| 0 | `00_build_lia_composite.py` | Reinthaler-LIA-Fläche auf `project_area` zuschneiden, per Cubic-Spline aufs 5-m-Raster interpolieren, als Eiskörper aufs moderne Terrain legen | `data/DEM_5m_LIA_cubic.tif` |
 | 1 | `01_inspect_dems.py` | Metadaten + Deckungsgleichheit prüfen | nur Konsolenausgabe |
-| 2 | `02_prepare_rasters.py` | Auf `project_area` zuschneiden, → EPSG:3857, NoData füllen | `app/build/dem_*_3857.tif` |
+| 2 | `02_prepare_rasters.py` | → EPSG:3857, NoData füllen, außerhalb `project_area` auf Ebene setzen | `app/build/dem_*_3857.tif` |
 | 3 | `03_make_terrainrgb.py` | Höhe → Terrain-RGB (rio-rgbify) | `app/build/terrainrgb_*.tif` |
 | 3b | `03b_make_hillshade.py` | Multidirektionaler Hillshade aus DEM (8-bit) | `app/build/hs_*_3857.tif` |
 | 4 | `04_make_tiles.py` | XYZ-Kacheln (gdal2tiles) | `app/tiles/<name>/{z}/{x}/{y}.png` |
 | 5 | `05_web_meta.py` | Kartenmitte/Bounds für die App | `app/meta.json` |
+| 7 | `07_make_pois.py` | Gipfel/Gletscher-POIs fürs Web aufbereiten | `app/pois.geojson` |
 
-Ausführen jeweils aus dem Projekt-Root, z. B.:
+Alles in einem Rutsch (bricht bei Fehler ab):
 
 ```bash
+python scripts/run_all.py
+# einzelne Schritte überspringen, z. B. das teure Composite:
+python scripts/run_all.py --skip 00 --skip 04
+```
+
+Oder einzeln aus dem Projekt-Root, z. B.:
+
+```bash
+python scripts/00_build_lia_composite.py
 python scripts/01_inspect_dems.py
 python scripts/02_prepare_rasters.py
 python scripts/03_make_terrainrgb.py
 python scripts/03b_make_hillshade.py
 python scripts/04_make_tiles.py
 python scripts/05_web_meta.py
+python scripts/07_make_pois.py
 ```
 
 Nach jedem Schritt kurz das Ergebnis kontrollieren (Schritt 1 liefert die
@@ -49,18 +61,30 @@ Sanity-Checks, die übrigen schreiben Dateien).
 
 ## Zuschnitt aufs Projektgebiet
 
-Schritt 2 schneidet die DEMs auf die Ausdehnung von
-`data/project_area.shp` (+ Puffer `AOI_BUFFER`) zu, bevor reprojiziert
-wird. Das hat zwei Effekte:
+Der Bezug ist überall `data/project_area.shp`:
 
-- **Viel weniger Kacheln:** ohne Zuschnitt wurde das gesamte, überwiegend
-  leere DEM-Rechteck (~51 × 55 km) gekachelt (≈ 90.000 Dateien / 1,2 GB).
-  Der Zuschnitt begrenzt das auf das Tal.
-- **Keine flache Rand-Ebene** mehr im 3D, weil der große NoData-Rand gar
-  nicht erst mitverarbeitet wird.
+- **Schritt 0** schneidet schon das grobe, alpenweite Reinthaler-Original
+  auf das Projektgebiet (+ `LIA_CLIP_BUFFER`) zu, damit nur die
+  relevanten Gletscher verarbeitet werden.
+- **Schritt 2** grenzt den verarbeiteten Ausschnitt per Fenster auf die
+  Polygon-Bounds (+ `AOI_BUFFER`) ein (viel weniger Kacheln: ohne
+  Zuschnitt würde das gesamte, überwiegend leere DEM-Rechteck von
+  ~51 × 55 km gekachelt, ≈ 90.000 Dateien / 1,2 GB). Anschließend werden
+  bei **beiden** DEMs alle Werte **außerhalb der Polygonform** auf eine
+  einheitliche **Ebenen-Höhe** gesetzt (Minimum im Projektgebiet bzw.
+  `AOI_PLANE_HEIGHT`).
 
-Passt der Ausschnitt nicht, `AOI_PATH`/`AOI_BUFFER` in `config.py` ändern
-und ab Schritt 2 neu laufen lassen.
+**Warum eine Ebene statt NoData?** MapLibre-Terrain (`raster-dem`) hat
+kein Alpha; ein hartes NoData außerhalb würde als Wand/Grube ums Tal
+gerendert. Eine flache, niedrige Ebene liefert stattdessen einen
+sauberen Sockel, auf dem das Tal sitzt. Beide Epochen nutzen dieselbe
+Ebenen-Höhe, damit der Vorher/Nachher-Toggle die Ebene nicht verschiebt.
+Der Hillshade dieser Ebene ist gleichmäßig getönt (kein Relief) – deshalb
+braucht Schritt 3b keine zusätzliche Maskierung.
+
+Passt der Ausschnitt/die Ebene nicht, `AOI_PATH`/`AOI_BUFFER`/
+`AOI_PLANE_HEIGHT` in `config.py` ändern und ab Schritt 0 (bei Gletscher-
+Änderungen) bzw. Schritt 2 neu laufen lassen.
 
 ## Web-App (Phase B)
 

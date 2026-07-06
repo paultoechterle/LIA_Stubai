@@ -13,6 +13,11 @@ Warum aus dem DEM statt aus externen (QGIS-)Dateien:
 Der Hillshade ist multidirektional (Beleuchtung aus mehreren Richtungen),
 das wirkt plastischer und vermeidet harte Schattenkanten.
 
+Der Zuschnitt aufs Projektgebiet passiert bereits in Schritt 02: dort ist
+alles ausserhalb der Polygonform auf eine flache Ebene gesetzt. Der
+Hillshade dieser Ebene ist gleichmässig getönt (kein Relief) und braucht
+keine weitere Maskierung.
+
 Benötigt die osgeo/GDAL-Python-Bindings (conda-forge gdal).
 
 Ausführen:
