@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="utf-8">
-  <title>Gletscherrückgang Stubai – 3D</title>
+  <title>Kleine Eiszeit, Stubai – 3D</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css"
         rel="stylesheet">
@@ -18,6 +18,33 @@
     }
     #panel h1 { margin: 0 0 4px; font-size: 16px; }
     #panel p { margin: 4px 0 0; font-size: 12px; line-height: 1.4; }
+    #panel-top {
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px;
+    }
+    #panel-toggle {
+      padding: 2px 9px; font-size: 15px; line-height: 1;
+      border: 1px solid #bbb; border-radius: 5px; background: #f4f4f4;
+      color: #1a1a1a; cursor: pointer;
+    }
+    #panel-toggle:hover { background: #e9e9e9; }
+    #panel-body { margin-top: 8px; }
+    /* Eingeklappt: nur der Umschalt-Button bleibt sichtbar, das Panel
+       schrumpft auf dessen Größe. */
+    #panel.collapsed { max-width: none; }
+    #panel.collapsed #panel-body { display: none; }
+    #panel.collapsed #lang-toggle { display: none; }
+    #lang-toggle {
+      display: flex; justify-content: flex-end; gap: 4px;
+    }
+    #lang-toggle button {
+      padding: 2px 8px; font-size: 11px; border: 1px solid #bbb;
+      border-radius: 5px; background: #f4f4f4; color: #1a1a1a;
+      cursor: pointer;
+    }
+    #lang-toggle button.active {
+      background: #2c6fb3; color: #fff; border-color: #2c6fb3;
+    }
     #toggle {
       display: flex; margin-top: 10px; border: 1px solid #bbb;
       border-radius: 6px; overflow: hidden;
@@ -69,12 +96,21 @@
 <body>
   <div id="map"></div>
   <div id="panel">
-    <h1>Gletscherrückgang Stubai</h1>
-    <p>3D-Relief. Ziehen zum Drehen, Rechtsklick + Ziehen zum Neigen,
-       Scrollen zum Zoomen.</p>
+    <div id="panel-top">
+      <button id="panel-toggle" aria-controls="panel-body"
+              aria-expanded="true">✕</button>
+      <div id="lang-toggle">
+        <button id="btn-de">DE</button>
+        <button id="btn-en">EN</button>
+      </div>
+    </div>
+    <div id="panel-body">
+    <h1 id="app-title">Kleine Eiszeit, Stubai</h1>
+    <p id="intro">3D-Relief. Ziehen zum Drehen, Rechtsklick + Ziehen zum
+       Neigen, Scrollen zum Zoomen.</p>
     <div id="toggle">
       <button id="btn-modern" class="active">Heute</button>
-      <button id="btn-lia">1850</button>
+      <button id="btn-lia">Kleine Eiszeit</button>
     </div>
     <!--
     <p id="note">Das 1850-Gelände ist eine Kombination aus moderner Topographie
@@ -82,17 +118,17 @@
       einem eisdynamischen Modell (vgl. <a href="https://doi.org/10.5194/tc-19-753-2025"
          target="_blank" rel="noopener">Reinthaler & Paul, 2025</a>).</p>
     -->
-    <button id="toggle-pois">Gipfel &amp; Gletscher ausblenden</button>
+    <button id="toggle-pois">Labels ausblenden</button>
     <button id="export">Bild speichern (PNG)</button>
     <details id="credits">
-      <summary>Quellen &amp; Credits</summary>
-      <p><b>Geländemodell (5 m):</b> © Land Tirol – tiris
+      <summary id="credits-summary">Quellen &amp; Credits</summary>
+      <p id="credit-dem"><b>Geländemodell (5 m):</b> © Land Tirol – tiris
          (Abt. Geoinformatik).</p>
-      <p><b>Gletscherstände 1850:</b> rekonstruiert nach
+      <p id="credit-glacier"><b>Gletscherstände 1850:</b> rekonstruiert nach
          <a href="https://doi.org/10.5194/tc-19-753-2025"
             target="_blank" rel="noopener">Reinthaler & Paul, 2025</a>.
          Höhen mit entsprechender Unsicherheit.</p>
-      <p><b>Umsetzung:</b> Dr. Paul Töchterle ·
+      <p id="credit-impl"><b>Umsetzung:</b> Dr. Paul Töchterle ·
          <a href="https://paultoechterle.at" target="_blank"
             rel="noopener">paultoechterle.at</a> ·
          <a href="mailto:paul.m.toechterle@gmail.com"
@@ -107,6 +143,7 @@
     </div>
     <p id="draw-hint"></p>
     -->
+    </div><!-- /#panel-body -->
   </div>
 
   <!-- Analytics: GoatCounter (eigener, projekteigener Zähler).
@@ -364,16 +401,143 @@
       const POI_LAYERS = ["poi_peak_major", "poi_peak_minor",
                           "poi_glacier"];
       let poisVisible = true;
+      // Beschriftung des POI-Buttons hängt von Zustand UND Sprache ab.
+      function updatePoiToggleLabel() {
+        document.getElementById("toggle-pois").textContent =
+          poisVisible ? t("poisHide") : t("poisShow");
+      }
       document.getElementById("toggle-pois")
         .addEventListener("click", () => {
           poisVisible = !poisVisible;
           const visibility = poisVisible ? "visible" : "none";
           POI_LAYERS.forEach((id) =>
             map.setLayoutProperty(id, "visibility", visibility));
-          document.getElementById("toggle-pois").textContent = poisVisible
-            ? "Gipfel & Gletscher ausblenden"
-            : "Gipfel & Gletscher einblenden";
+          updatePoiToggleLabel();
         });
+
+      // --- Mehrsprachigkeit (DE/EN) ---------------------------------
+      // Deutsch ist Standard; internationale Besucher können auf Englisch
+      // umschalten. Die POI-Namen (Gipfel/Gletscher) stammen aus den Daten
+      // und werden bewusst nicht übersetzt. Credits-Links sind in beiden
+      // Sprachen identisch, nur die Beschriftungstexte ändern sich.
+      // --- Bedienfeld ein-/ausklappen -------------------------------
+      // Ganzes Panel auf einen kleinen Button reduzieren, damit die
+      // Karte frei betrachtet werden kann (z. B. auf dem Smartphone).
+      let panelCollapsed = false;
+      function updatePanelToggle() {
+        const btn = document.getElementById("panel-toggle");
+        btn.textContent = panelCollapsed ? "☰" : "✕";
+        btn.title = panelCollapsed ? t("panelShow") : t("panelHide");
+        btn.setAttribute("aria-label", btn.title);
+        btn.setAttribute("aria-expanded", String(!panelCollapsed));
+      }
+      document.getElementById("panel-toggle")
+        .addEventListener("click", () => {
+          panelCollapsed = !panelCollapsed;
+          document.getElementById("panel")
+            .classList.toggle("collapsed", panelCollapsed);
+          updatePanelToggle();
+        });
+
+      const CREDIT_GLACIER_LINK =
+        '<a href="https://doi.org/10.5194/tc-19-753-2025" ' +
+        'target="_blank" rel="noopener">Reinthaler &amp; Paul, 2025</a>';
+      const CREDIT_IMPL_LINKS =
+        '<a href="https://paultoechterle.at" target="_blank" ' +
+        'rel="noopener">paultoechterle.at</a> · ' +
+        '<a href="mailto:paul.m.toechterle@gmail.com">' +
+        'paul.m.toechterle@gmail.com</a>';
+      const I18N = {
+        de: {
+          docTitle: "Kleine Eiszeit Stubai – 3D",
+          title: "Kleine Eiszeit Stubai",
+          intro: "3D-Relief. Ziehen zum Drehen, Rechtsklick + Ziehen " +
+                 "zum Neigen, Scrollen zum Zoomen.",
+          btnModern: "Heute",
+          btnLia: "Kleine Eiszeit (~1850)",
+          panelHide: "Bedienfeld ausblenden",
+          panelShow: "Bedienfeld einblenden",
+          poisHide: "Labels ausblenden",
+          poisShow: "Labels einblenden",
+          exportBtn: "Bild speichern (PNG)",
+          creditsSummary: "Quellen & Credits",
+          creditDem: "<b>Geländemodell (5 m):</b> © Land Tirol – " +
+                     "tiris (Abt. Geoinformatik).",
+          creditGlacier: "<b>Gletscherstände 1850:</b> rekonstruiert " +
+                         "nach " + CREDIT_GLACIER_LINK + ". Höhen mit " +
+                         "entsprechender Unsicherheit.",
+          creditImpl: "<b>Umsetzung:</b> Dr. Paul Töchterle · " +
+                      CREDIT_IMPL_LINKS,
+        },
+        en: {
+          docTitle: "Little Ice Age Stubai – 3D",
+          title: "Little Ice Age, Stubai",
+          intro: "3D relief. Drag to rotate, right-click + drag to " +
+                 "tilt, scroll to zoom.",
+          btnModern: "Today",
+          btnLia: "Little Ice Age (~1850)",
+          panelHide: "Hide panel",
+          panelShow: "Show panel",
+          poisHide: "Hide annotations",
+          poisShow: "Show annotations",
+          exportBtn: "Save image (PNG)",
+          creditsSummary: "Sources & credits",
+          creditDem: "<b>Terrain model (5 m):</b> © Land Tirol – " +
+                     "tiris (Dept. of Geoinformatics).",
+          creditGlacier: "<b>1850 glacier extent:</b> reconstructed " +
+                         "after " + CREDIT_GLACIER_LINK + ". Elevations " +
+                         "with corresponding uncertainty.",
+          creditImpl: "<b>Made by:</b> Dr. Paul Töchterle · " +
+                      CREDIT_IMPL_LINKS,
+        },
+      };
+      let currentLang = "de";
+      function t(key) {
+        return I18N[currentLang][key];
+      }
+      function applyLang(lang) {
+        currentLang = I18N[lang] ? lang : "de";
+        document.documentElement.lang = currentLang;
+        document.title = t("docTitle");
+        document.getElementById("app-title").textContent = t("title");
+        document.getElementById("intro").textContent = t("intro");
+        document.getElementById("btn-modern").textContent = t("btnModern");
+        document.getElementById("btn-lia").textContent = t("btnLia");
+        document.getElementById("export").textContent = t("exportBtn");
+        document.getElementById("credits-summary").textContent =
+          t("creditsSummary");
+        document.getElementById("credit-dem").innerHTML = t("creditDem");
+        document.getElementById("credit-glacier").innerHTML =
+          t("creditGlacier");
+        document.getElementById("credit-impl").innerHTML = t("creditImpl");
+        updatePoiToggleLabel();
+        updatePanelToggle();
+        document.getElementById("btn-de")
+          .classList.toggle("active", currentLang === "de");
+        document.getElementById("btn-en")
+          .classList.toggle("active", currentLang === "en");
+        try {
+          localStorage.setItem("lang", currentLang);
+        } catch (err) {
+          /* localStorage kann in manchen Kontexten blockiert sein. */
+        }
+      }
+      document.getElementById("btn-de")
+        .addEventListener("click", () => applyLang("de"));
+      document.getElementById("btn-en")
+        .addEventListener("click", () => applyLang("en"));
+
+      // Startsprache: gespeicherte Wahl, sonst Browsersprache, sonst DE.
+      let storedLang = null;
+      try {
+        storedLang = localStorage.getItem("lang");
+      } catch (err) {
+        /* localStorage nicht verfügbar -> Fallback unten. */
+      }
+      const browserLang =
+        (navigator.language || "de").toLowerCase().startsWith("de")
+          ? "de" : "en";
+      applyLang(storedLang || browserLang);
 
       /* Zeichenfunktion vorerst deaktiviert (Reaktivieren: diesen Block
          sowie glyphs, annotations-Quelle und die ann_*-Layer oben wieder
